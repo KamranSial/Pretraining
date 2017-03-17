@@ -16,14 +16,12 @@ class Vgg16:
     def __init__(self, vgg16_npy_path=None, trainable=True):
         if vgg16_npy_path is not None:
             self.data_dict = np.load(vgg16_npy_path, encoding='latin1').item()
-            print("Model Loaded")
         else:
             self.data_dict = None
 
         self.var_dict = {}
         self.trainable = trainable
-        self.wd = 5e-4
-        
+
     def build(self, rgb, train_mode=None):
         """
         load variable from npy to build the VGG
@@ -47,43 +45,43 @@ class Vgg16:
         assert bgr.get_shape().as_list()[1:] == [224, 224, 3]
 
         self.conv1_1 = self.conv_layer(bgr, 3, 64, "conv1_1")
-        self.conv1_2 = self.conv_layer(self.conv1_1, 64, 64, "conv1_2")
-        self.pool1 = self.max_pool(self.conv1_2, 'pool1')
+        #self.conv1_2 = self.conv_layer(self.conv1_1, 64, 64, "conv1_2")
+        self.pool1 = self.max_pool(self.conv1_1, 'pool1')
 
         self.conv2_1 = self.conv_layer(self.pool1, 64, 128, "conv2_1")
-        self.conv2_2 = self.conv_layer(self.conv2_1, 128, 128, "conv2_2")
-        self.pool2 = self.max_pool(self.conv2_2, 'pool2')
+        #self.conv2_2 = self.conv_layer(self.conv2_1, 128, 128, "conv2_2")
+        self.pool2 = self.max_pool(self.conv2_1, 'pool2')
 
         self.conv3_1 = self.conv_layer(self.pool2, 128, 256, "conv3_1")
         self.conv3_2 = self.conv_layer(self.conv3_1, 256, 256, "conv3_2")
-        self.conv3_3 = self.conv_layer(self.conv3_2, 256, 256, "conv3_3")
-        self.pool3 = self.max_pool(self.conv3_3, 'pool3')
+        #self.conv3_3 = self.conv_layer(self.conv3_2, 256, 256, "conv3_3")
+        self.pool3 = self.max_pool(self.conv3_2, 'pool3')
 
         self.conv4_1 = self.conv_layer(self.pool3, 256, 512, "conv4_1")
         self.conv4_2 = self.conv_layer(self.conv4_1, 512, 512, "conv4_2")
-        self.conv4_3 = self.conv_layer(self.conv4_2, 512, 512, "conv4_3")
-        self.pool4 = self.max_pool(self.conv4_3, 'pool4')
+        #self.conv4_3 = self.conv_layer(self.conv4_2, 512, 512, "conv4_3")
+        self.pool4 = self.max_pool(self.conv4_2, 'pool4')
 
         self.conv5_1 = self.conv_layer(self.pool4, 512, 512, "conv5_1")
         self.conv5_2 = self.conv_layer(self.conv5_1, 512, 512, "conv5_2")
-        self.conv5_3 = self.conv_layer(self.conv5_2, 512, 512, "conv5_3")
-        self.pool5 = self.max_pool(self.conv5_3, 'pool5')
+        #self.conv5_3 = self.conv_layer(self.conv5_2, 512, 512, "conv5_3")
+        self.pool5 = self.max_pool(self.conv5_2, 'pool5')
 
-        self.fc6 = self.fc_layer(self.pool5, 25088, 4096, "fc6")  # 25088 = ((224 / (2 ** 5)) ** 2) * 512
+        self.fc6 = self.fc_layer(self.pool5, 25088, 2048, "fc6")  # 25088 = ((224 / (2 ** 5)) ** 2) * 512
         self.relu6 = tf.nn.relu(self.fc6)
         if train_mode is not None:
             self.relu6 = tf.cond(train_mode, lambda: tf.nn.dropout(self.relu6, 0.5), lambda: self.relu6)
         elif self.trainable:
             self.relu6 = tf.nn.dropout(self.relu6, 0.5)
 
-        self.fc7 = self.fc_layer(self.relu6, 4096, 4096, "fc7")
+        self.fc7 = self.fc_layer(self.relu6, 2048, 2048, "fc7")
         self.relu7 = tf.nn.relu(self.fc7)
         if train_mode is not None:
             self.relu7 = tf.cond(train_mode, lambda: tf.nn.dropout(self.relu7, 0.5), lambda: self.relu7)
         elif self.trainable:
             self.relu7 = tf.nn.dropout(self.relu7, 0.5)
 
-        self.fc8 = self.fc_layer(self.relu7, 4096, 1000, "fc8")
+        self.fc8 = self.fc_layer(self.relu7, 2048, 1000, "fc8")
 
         #self.prob = tf.nn.softmax(self.fc8, name="prob")
 
@@ -115,14 +113,11 @@ class Vgg16:
             return fc
 
     def get_conv_var(self, filter_size, in_channels, out_channels, name):
-        initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0, 0.001)
-        filters = self.get_var(initial_value, name, 0, name + "_filters")
-        #filters = tf.get_variable(name + "_filters_W", shape=[filter_size, filter_size, in_channels, out_channels],initializer=tf.contrib.layers.xavier_initializer())
-        weight_decay = tf.mul(tf.nn.l2_loss(filters), self.wd,
-                                  name='weight_loss')
-        print(name)
-        tf.add_to_collection('losses', weight_decay)
-            
+        # initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0, 0.001)
+        # filters = self.get_var(initial_value, name, 0, name + "_filters")
+        filters = tf.get_variable(name + "_filters_W", shape=[filter_size, filter_size, in_channels, out_channels],
+                                  initializer=tf.contrib.layers.xavier_initializer())
+
         initial_value = tf.zeros([out_channels])
         biases = self.get_var(initial_value, name, 1, name + "_biases")
 
@@ -133,11 +128,7 @@ class Vgg16:
         # weights = self.get_var(initial_value, name, 0, name + "_weights")
         weights = tf.get_variable(name + "_weights_W", shape=[in_size, out_size],
                                   initializer=tf.contrib.layers.xavier_initializer())
-        weight_decay = tf.mul(tf.nn.l2_loss(weights), self.wd,
-                                      name='weight_loss')
-        print(name)
-        tf.add_to_collection('losses', weight_decay)
-            
+
         initial_value = tf.constant(0.1, shape=[out_size])
         biases = self.get_var(initial_value, name, 1, name + "_biases")
 
@@ -146,9 +137,13 @@ class Vgg16:
     def get_var(self, initial_value, name, idx, var_name):
         if self.data_dict is not None and name in self.data_dict:
             value = self.data_dict[name][idx]
+        else:
+            value = initial_value
+
+        if self.trainable:
             var = tf.Variable(value, name=var_name)
         else:
-            var = tf.get_variable(var_name + "_filters_W", shape=[filter_size, filter_size, in_channels, out_channels],initializer=tf.contrib.layers.xavier_initializer())
+            var = tf.constant(value, dtype=tf.float32, name=var_name)
 
         self.var_dict[(name, idx)] = var
 

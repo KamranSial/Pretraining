@@ -115,45 +115,76 @@ class Vgg16:
             return fc
 
     def get_conv_var(self, filter_size, in_channels, out_channels, name):
-        initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0, 0.001)
-        filters = self.get_var(initial_value, name, 0, name + "_filters")
+        #initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0, 0.001)
+        var_shape=[filter_size, filter_size, in_channels, out_channels]
+        filters = self.get_var(var_shape, name, 0, name + "_filters_W")
         #filters = tf.get_variable(name + "_filters_W", shape=[filter_size, filter_size, in_channels, out_channels],initializer=tf.contrib.layers.xavier_initializer())
         weight_decay = tf.mul(tf.nn.l2_loss(filters), self.wd,
                                   name='weight_loss')
-        print(name)
+        print(name, "L2 Loss Added")
         tf.add_to_collection('losses', weight_decay)
             
-        initial_value = tf.zeros([out_channels])
-        biases = self.get_var(initial_value, name, 1, name + "_biases")
+        #initial_value = tf.zeros([out_channels])
+        var_shape=[out_channels]
+        biases = self.get_bias(var_shape, name, 1, name + "_biases")
 
         return filters, biases
 
     def get_fc_var(self, in_size, out_size, name):
         # initial_value = tf.truncated_normal([in_size, out_size], 0.0, 0.001)
-        # weights = self.get_var(initial_value, name, 0, name + "_weights")
-        weights = tf.get_variable(name + "_weights_W", shape=[in_size, out_size],
-                                  initializer=tf.contrib.layers.xavier_initializer())
+        var_shape=[in_size, out_size]
+        weights = self.get_var(var_shape, name, 0, name + "_weights_W")
+        #weights = tf.get_variable(name + "_weights_W", shape=[in_size, out_size],
+        #                          initializer=tf.contrib.layers.xavier_initializer())
         weight_decay = tf.mul(tf.nn.l2_loss(weights), self.wd,
                                       name='weight_loss')
-        print(name)
+        print(name, "L2 Loss Added")
         tf.add_to_collection('losses', weight_decay)
             
-        initial_value = tf.constant(0.1, shape=[out_size])
-        biases = self.get_var(initial_value, name, 1, name + "_biases")
+        #initial_value = tf.constant(0.1, shape=[out_size])
+        var_shape=[out_size]
+        biases = self.get_bias(var_shape, name, 1, name + "_biases")
 
         return weights, biases
 
-    def get_var(self, initial_value, name, idx, var_name):
+    def get_var(self, var_shape, name, idx, var_name):
         if self.data_dict is not None and name in self.data_dict:
             value = self.data_dict[name][idx]
             var = tf.Variable(value, name=var_name)
+            print (name, "Value Loaded")
         else:
-            var = tf.get_variable(var_name + "_filters_W", shape=[filter_size, filter_size, in_channels, out_channels],initializer=tf.contrib.layers.xavier_initializer())
-
+            if(name=="fc6" or name=="fc7" or name=="fc8"):
+                var=tf.get_variable(var_name,shape=var_shape,initializer=tf.contrib.layers.xavier_initializer())
+                print (name, "Value Initialized")
+            else:
+                var=tf.get_variable(var_name,shape=var_shape,initializer=tf.contrib.layers.xavier_initializer_conv2d())
+                print (name, "2d Value Initialized")
         self.var_dict[(name, idx)] = var
 
-        # print var_name, var.get_shape().as_list()
-        assert var.get_shape() == initial_value.get_shape()
+        print var_name, var.get_shape().as_list()
+        assert var.get_shape() == var_shape
+
+        return var
+    
+    def get_bias(self, var_shape, name, idx, var_name):
+        if self.data_dict is not None and name in self.data_dict:
+            value = self.data_dict[name][idx]
+            var = tf.Variable(value, name=var_name)
+            print (name, "Value Loaded")
+        else:
+            if(name=="fc6" or name=="fc7" or name=="fc8"):
+                init_value=tf.constant(0.1, shape=var_shape)
+                var=tf.get_variable(var_name,shape=var_shape,initializer=tf.constant_initializer(value=0.1,
+                                       dtype=tf.float32))
+                print (name, "Value Initialized 0.1")
+            else:
+                #init_value=tf.zeros(var_shape,dtype=tf.float32)
+                var=tf.get_variable(var_name,initializer=tf.zeros_initializer(shape=var_shape,dtype=tf.float32))
+                print (name, "Value Initialized 0")
+        self.var_dict[(name, idx)] = var
+
+        print var_name, var.get_shape().as_list()
+        assert var.get_shape() == var_shape
 
         return var
 

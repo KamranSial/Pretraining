@@ -16,14 +16,12 @@ class Vgg16:
     def __init__(self, vgg16_npy_path=None, trainable=True):
         if vgg16_npy_path is not None:
             self.data_dict = np.load(vgg16_npy_path, encoding='latin1').item()
-            print("Model Loaded")
         else:
             self.data_dict = None
 
         self.var_dict = {}
         self.trainable = trainable
-        self.wd = 5e-4
-        
+
     def build(self, rgb, train_mode=None):
         """
         load variable from npy to build the VGG
@@ -83,11 +81,12 @@ class Vgg16:
         elif self.trainable:
             self.relu7 = tf.nn.dropout(self.relu7, 0.5)
 
-        self.fc8 = self.fc_layer(self.relu7, 4096, 1000, "fc8")
+        self.fc8 = self.fc_layer(self.relu7, 4096, 2, "fc8")
 
-        #self.prob = tf.nn.softmax(self.fc8, name="prob")
+        self.prob = tf.nn.softmax(self.fc8, name="prob")
 
         self.data_dict = None
+
 
     def avg_pool(self, bottom, name):
         return tf.nn.avg_pool(bottom, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME', name=name)
@@ -115,16 +114,13 @@ class Vgg16:
             return fc
 
     def get_conv_var(self, filter_size, in_channels, out_channels, name):
-        initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0, 0.001)
-        filters = self.get_var(initial_value, name, 0, name + "_filters")
-        #filters = tf.get_variable(name + "_filters_W", shape=[filter_size, filter_size, in_channels, out_channels],initializer=tf.contrib.layers.xavier_initializer())
-        weight_decay = tf.mul(tf.nn.l2_loss(filters), self.wd,
-                                  name='weight_loss')
-        print(name)
-        tf.add_to_collection('losses', weight_decay)
-            
-        initial_value = tf.zeros([out_channels])
-        biases = self.get_var(initial_value, name, 1, name + "_biases")
+        # initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0, 0.001)
+        # filters = self.get_var(initial_value, name, 0, name + "_filters")
+        filters = tf.get_variable(name + "_filters_W", shape=[filter_size, filter_size, in_channels, out_channels],
+                                  initializer=tf.contrib.layers.xavier_initializer())
+
+        initial_value = tf.zeros(shape=[out_channels])
+        biases = tf.get_variable(name + "_biases", initializer=initial_value)
 
         return filters, biases
 
@@ -133,29 +129,29 @@ class Vgg16:
         # weights = self.get_var(initial_value, name, 0, name + "_weights")
         weights = tf.get_variable(name + "_weights_W", shape=[in_size, out_size],
                                   initializer=tf.contrib.layers.xavier_initializer())
-        weight_decay = tf.mul(tf.nn.l2_loss(weights), self.wd,
-                                      name='weight_loss')
-        print(name)
-        tf.add_to_collection('losses', weight_decay)
-            
+
         initial_value = tf.constant(0.1, shape=[out_size])
-        biases = self.get_var(initial_value, name, 1, name + "_biases")
+        biases = tf.get_variable( name + "_biases", initializer=initial_value)
 
         return weights, biases
 
-    def get_var(self, initial_value, name, idx, var_name):
-        if self.data_dict is not None and name in self.data_dict:
-            value = self.data_dict[name][idx]
-            var = tf.Variable(value, name=var_name)
-        else:
-            var = tf.get_variable(var_name + "_filters_W", shape=[filter_size, filter_size, in_channels, out_channels],initializer=tf.contrib.layers.xavier_initializer())
-
-        self.var_dict[(name, idx)] = var
-
-        # print var_name, var.get_shape().as_list()
-        assert var.get_shape() == initial_value.get_shape()
-
-        return var
+    # def get_var(self, initial_value, name, idx, var_name):
+    #     if self.data_dict is not None and name in self.data_dict:
+    #         value = self.data_dict[name][idx]
+    #     else:
+    #         value = initial_value
+    #
+    #     if self.trainable:
+    #         var = tf.Variable(value, name=var_name)
+    #     else:
+    #         var = tf.constant(value, dtype=tf.float32, name=var_name)
+    #
+    #     self.var_dict[(name, idx)] = var
+    #
+    #     # print var_name, var.get_shape().as_list()
+    #     assert var.get_shape() == initial_value.get_shape()
+    #
+    #     return var
 
     def save_npy(self, sess, npy_path="./vgg16-save.npy"):
         assert isinstance(sess, tf.Session)
