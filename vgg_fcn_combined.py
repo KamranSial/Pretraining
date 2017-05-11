@@ -24,7 +24,7 @@ class Vgg16:
         self.trainable = trainable
         self.wd = 5e-4
         
-    def build(self, rgb, classes, train_mode=None):
+    def build(self, rgb, train_mode=None):
         """
         load variable from npy to build the VGG
 
@@ -69,21 +69,19 @@ class Vgg16:
         self.conv5_3 = self.conv_layer(self.conv5_2, 512, 512, "conv5_3")
         self.pool5 = self.max_pool(self.conv5_3, 'pool5')
 
-        self.fc6 = self.fc_layer(self.pool5, 25088, 4096, "fc6")  # 25088 = ((224 / (2 ** 5)) ** 2) * 512
-        self.relu6 = tf.nn.relu(self.fc6)
+        self.fc6 = self.conv_layer2(self.pool5, 512, 4096,7, "fc6")  # 25088 = ((224 / (2 ** 5)) ** 2) * 512
         if train_mode is not None:
-            self.relu6 = tf.cond(train_mode, lambda: tf.nn.dropout(self.relu6, 0.5), lambda: self.relu6)
+            self.fc6 = tf.cond(train_mode, lambda: tf.nn.dropout(self.fc6, 0.5), lambda: self.fc6)
         elif self.trainable:
-            self.relu6 = tf.nn.dropout(self.relu6, 0.5)
+            self.fc6 = tf.nn.dropout(self.fc6, 0.5)
 
-        self.fc7 = self.fc_layer(self.relu6, 4096, 4096, "fc7")
-        self.relu7 = tf.nn.relu(self.fc7)
+        self.fc7 = self.conv_layer2(self.fc6, 4096, 4096,1, "fc7")
         if train_mode is not None:
-            self.relu7 = tf.cond(train_mode, lambda: tf.nn.dropout(self.relu7, 0.5), lambda: self.relu7)
+            self.fc7 = tf.cond(train_mode, lambda: tf.nn.dropout(self.fc7, 0.5), lambda: self.fc7)
         elif self.trainable:
-            self.relu7 = tf.nn.dropout(self.relu7, 0.5)
-
-        self.fc8 = self.fc_layer(self.relu7, 4096, classes, "fc8")
+            self.fc7 = tf.nn.dropout(self.fc7, 0.5)
+        self.gap=tf.reduce_mean(self.fc7,[1,2])
+        self.fc8 = self.fc_layer(self.gap, 4096, 142, "fc8")
 
         #self.prob = tf.nn.softmax(self.fc8, name="prob")
 
@@ -104,6 +102,16 @@ class Vgg16:
             relu = tf.nn.relu(bias)
 
             return relu
+        
+    def conv_layer2(self, bottom, in_channels, out_channels,filter_size, name):
+        with tf.variable_scope(name):
+            filt, conv_biases = self.get_conv_var(filter_size, in_channels, out_channels, name)
+
+            conv = tf.nn.conv2d(bottom, filt, [1, 1, 1, 1], padding='SAME')
+            bias = tf.nn.bias_add(conv, conv_biases)
+            relu = tf.nn.relu(bias)
+
+            return relu
 
     def fc_layer(self, bottom, in_size, out_size, name):
         with tf.variable_scope(name):
@@ -118,6 +126,7 @@ class Vgg16:
         #initial_value = tf.truncated_normal([filter_size, filter_size, in_channels, out_channels], 0.0, 0.001)
         var_shape=[filter_size, filter_size, in_channels, out_channels]
         filters = self.get_var(var_shape, name, 0, name + "_filters_W")
+        #filters = tf.get_variable(name + "_filters_W", shape=[filter_size, filter_size, in_channels, out_channels],initializer=tf.contrib.layers.xavier_initializer())
         weight_decay = tf.mul(tf.nn.l2_loss(filters), self.wd,
                                   name='weight_loss')
         print(name, "L2 Loss Added")
@@ -133,6 +142,8 @@ class Vgg16:
         # initial_value = tf.truncated_normal([in_size, out_size], 0.0, 0.001)
         var_shape=[in_size, out_size]
         weights = self.get_var(var_shape, name, 0, name + "_weights_W")
+        #weights = tf.get_variable(name + "_weights_W", shape=[in_size, out_size],
+        #                          initializer=tf.contrib.layers.xavier_initializer())
         weight_decay = tf.mul(tf.nn.l2_loss(weights), self.wd,
                                       name='weight_loss')
         print(name, "L2 Loss Added")
@@ -149,14 +160,13 @@ class Vgg16:
             value = self.data_dict[name][idx]
             var = tf.Variable(value, name=var_name)
             print (name, "Value Loaded")
-                
         else:
             if(name=="fc6" or name=="fc7" or name=="fc8"):
-                var=tf.get_variable(var_name,shape=var_shape,initializer=tf.contrib.layers.xavier_initializer(seed=127))
-                print (name, "Value Initialized with seed")
+                var=tf.get_variable(var_name,shape=var_shape,initializer=tf.contrib.layers.xavier_initializer())
+                print (name, "Value Initialized")
             else:
-                var=tf.get_variable(var_name,shape=var_shape,initializer=tf.contrib.layers.xavier_initializer_conv2d(seed=127))
-                print (name, "2d Value Initialized with seed")
+                var=tf.get_variable(var_name,shape=var_shape,initializer=tf.contrib.layers.xavier_initializer_conv2d())
+                print (name, "2d Value Initialized")
         self.var_dict[(name, idx)] = var
 
         print var_name, var.get_shape().as_list()
